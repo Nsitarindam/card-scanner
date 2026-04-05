@@ -73,8 +73,12 @@ def encode_image(source) -> tuple:
     img = Image.open(BytesIO(raw))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
+    # Resize large images — keeps quality fine for OCR, reduces token cost
+    max_side = 1600
+    if max(img.width, img.height) > max_side:
+        img.thumbnail((max_side, max_side), Image.LANCZOS)
     buf = BytesIO()
-    img.save(buf, format="JPEG", quality=95)
+    img.save(buf, format="JPEG", quality=90)
     buf.seek(0)
     return base64.standard_b64encode(buf.read()).decode("utf-8"), "image/jpeg"
 
@@ -136,7 +140,7 @@ Return ONLY valid JSON with no markdown or extra text:
 
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[{"role": "user", "content": content}],
     )
 
