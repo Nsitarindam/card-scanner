@@ -35,8 +35,11 @@ def normalize_list(val):
 
 # ── Helper: get API key (Streamlit Cloud secrets or local .env) ────────────────
 def get_api_key():
-    if "ANTHROPIC_API_KEY" in st.secrets:
-        return st.secrets["ANTHROPIC_API_KEY"]
+    try:
+        if "ANTHROPIC_API_KEY" in st.secrets:
+            return st.secrets["ANTHROPIC_API_KEY"]
+    except Exception:
+        pass
     return os.getenv("ANTHROPIC_API_KEY", "")
 
 # ── Helper: get Google Sheet credentials ──────────────────────────────────────
@@ -45,12 +48,14 @@ def get_gsheet_creds():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
-    # Streamlit Cloud: credentials stored in st.secrets
-    if "gcp_service_account" in st.secrets:
-        return Credentials.from_service_account_info(
-            dict(st.secrets["gcp_service_account"]),
-            scopes=scopes,
-        )
+    try:
+        if "gcp_service_account" in st.secrets:
+            return Credentials.from_service_account_info(
+                dict(st.secrets["gcp_service_account"]),
+                scopes=scopes,
+            )
+    except Exception:
+        pass
     # Local: credentials.json file next to app.py
     creds_path = os.path.join(os.path.dirname(__file__), "credentials.json")
     if os.path.exists(creds_path):
@@ -59,8 +64,11 @@ def get_gsheet_creds():
 
 # ── Helper: get Sheet ID ───────────────────────────────────────────────────────
 def get_sheet_id():
-    if "GOOGLE_SHEET_ID" in st.secrets:
-        return st.secrets["GOOGLE_SHEET_ID"]
+    try:
+        if "GOOGLE_SHEET_ID" in st.secrets:
+            return st.secrets["GOOGLE_SHEET_ID"]
+    except Exception:
+        pass
     return os.getenv("GOOGLE_SHEET_ID", "")
 
 # ── Helper: encode image to base64 ────────────────────────────────────────────
@@ -139,7 +147,7 @@ Return ONLY valid JSON with no markdown or extra text:
     content.append({"type": "text", "text": prompt})
 
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-3-haiku-20240307",
         max_tokens=2048,
         messages=[{"role": "user", "content": content}],
     )
@@ -200,7 +208,7 @@ def save_to_sheet(data):
             data.get("raw_text_front") or "",
             data.get("raw_text_back") or "",
         ]
-        ws.append_row(row, value_input_option="USER_ENTERED")
+        ws.append_row(row, value_input_option="RAW")
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
     except Exception as e:
         st.warning(f"Could not save to Google Sheet: {e}")
