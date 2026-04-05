@@ -139,7 +139,7 @@ Return ONLY valid JSON with no markdown or extra text:
     content.append({"type": "text", "text": prompt})
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-3-5-sonnet-20241022",
         max_tokens=2048,
         messages=[{"role": "user", "content": content}],
     )
