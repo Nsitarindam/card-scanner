@@ -26,18 +26,17 @@ st.caption("Scan a card → Claude reads it → Saved to Google Sheet automatica
 
 # ── Helper: normalize any value to a list ─────────────────────────────────────
 def normalize_list(val):
-    """Ensure phones/emails are always a list, even if Claude returns a string."""
     if val is None:
         return []
     if isinstance(val, list):
         return [str(v) for v in val if v]
     return [str(val)]
 
-# ── Helper: get API key (Streamlit Cloud secrets or local .env) ────────────────
+# ── Helper: get API key ────────────────────────────────────────────────────────
 def get_api_key():
     try:
         if "ANTHROPIC_API_KEY" in st.secrets:
-            return st.secrets["ANTHROPIC_API_KEY"]
+            return str(st.secrets["ANTHROPIC_API_KEY"])
     except Exception:
         pass
     return os.getenv("ANTHROPIC_API_KEY", "")
@@ -48,32 +47,48 @@ def get_gsheet_creds():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
+    # Try Streamlit Cloud secrets first
     try:
         if "gcp_service_account" in st.secrets:
-            return Credentials.from_service_account_info(
-                dict(st.secrets["gcp_service_account"]),
-                scopes=scopes,
-            )
-    except Exception:
-        pass
-    # Local: credentials.json file next to app.py
+            raw = st.secrets["gcp_service_account"]
+            # Force convert to plain dict with plain string values
+            info = {
+                "type": str(raw["type"]),
+                "project_id": str(raw["project_id"]),
+                "private_key_id": str(raw["private_key_id"]),
+                "private_key": str(raw["private_key"]).replace("\\n", "\n"),
+                "client_email": str(raw["client_email"]),
+                "client_id": str(raw["client_id"]),
+                "auth_uri": str(raw["auth_uri"]),
+                "token_uri": str(raw["token_uri"]),
+                "auth_provider_x509_cert_url": str(raw["auth_provider_x509_cert_url"]),
+                "client_x509_cert_url": str(raw["client_x509_cert_url"]),
+            }
+            return Credentials.from_service_account_info(info, scopes=scopes)
+    except Exception as e:
+        st.warning(f"Cloud credentials error: {e}")
+
+    # Fall back to local credentials.json
     creds_path = os.path.join(os.path.dirname(__file__), "credentials.json")
     if os.path.exists(creds_path):
-        return Credentials.from_service_account_file(creds_path, scopes=scopes)
+        try:
+            return Credentials.from_service_account_file(creds_path, scopes=scopes)
+        except Exception as e:
+            st.warning(f"Local credentials.json error: {e}")
+
     return None
 
 # ── Helper: get Sheet ID ───────────────────────────────────────────────────────
 def get_sheet_id():
     try:
         if "GOOGLE_SHEET_ID" in st.secrets:
-            return st.secrets["GOOGLE_SHEET_ID"]
+            return str(st.secrets["GOOGLE_SHEET_ID"])
     except Exception:
         pass
     return os.getenv("GOOGLE_SHEET_ID", "")
 
 # ── Helper: encode image to base64 ────────────────────────────────────────────
-def encode_image(source) -> tuple:
-    """Accepts UploadedFile or bytes (from camera_input). Returns (base64, mime)."""
+def encode_image(source):
     if hasattr(source, "read"):
         raw = source.read()
     else:
@@ -81,7 +96,6 @@ def encode_image(source) -> tuple:
     img = Image.open(BytesIO(raw))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-    # Resize large images — keeps quality fine for OCR, reduces token cost
     max_side = 1600
     if max(img.width, img.height) > max_side:
         img.thumbnail((max_side, max_side), Image.LANCZOS)
@@ -92,10 +106,9 @@ def encode_image(source) -> tuple:
 
 # ── Helper: call Claude ────────────────────────────────────────────────────────
 def scan_card(front_source, back_source=None):
-    """Send card image(s) to Claude and return parsed JSON dict."""
     api_key = get_api_key()
     if not api_key or api_key == "your_api_key_here":
-        st.error("Anthropic API key not set. Add it to your .env file or Streamlit secrets.")
+        st.error("Anthropic API key not set.")
         st.stop()
 
     client = anthropic.Anthropic(api_key=api_key)
@@ -136,13 +149,15 @@ Return ONLY valid JSON with no markdown or extra text:
 }}"""
 
     content = []
-
-    front_b64, front_mime = encode_image(front_source)
-    content.append({"type": "image", "source": {"type": "base64", "media_type": front_mime, "data": front_b64}})
-
-    if back_source is not None:
-        back_b64, back_mime = encode_image(back_source)
-        content.append({"type": "image", "source": {"type": "base64", "media_type": back_mime, "data": back_b64}})
+    try:
+        front_b64, front_mime = encode_image(front_source)
+        content.append({"type": "image", "source": {"type": "base64", "media_type": front_mime, "data": front_b64}})
+        if back_source is not None:
+            back_b64, back_mime = encode_image(back_source)
+            content.append({"type": "image", "source": {"type": "base64", "media_type": back_mime, "data": back_b64}})
+    except Exception as e:
+        st.error(f"Image encoding error: {e}")
+        st.stop()
 
     content.append({"type": "text", "text": prompt})
 
@@ -171,10 +186,12 @@ Return ONLY valid JSON with no markdown or extra text:
 def save_to_sheet(data):
     sheet_id = get_sheet_id()
     if not sheet_id or sheet_id == "your_sheet_id_here":
+        st.warning("Google Sheet ID not configured in secrets.")
         return None
 
     creds = get_gsheet_creds()
     if creds is None:
+        st.warning("Could not load Google credentials. Check [gcp_service_account] in Streamlit secrets.")
         return None
 
     try:
@@ -215,7 +232,7 @@ def save_to_sheet(data):
         ws.append_row(row, value_input_option="RAW")
         return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
     except Exception as e:
-        st.warning(f"Could not save to Google Sheet: {e}")
+        st.warning(f"Google Sheet save error: {e}")
         return None
 
 # ── Helper: display extracted data ────────────────────────────────────────────
@@ -266,7 +283,6 @@ def display_results(data):
 
 # ── Helper: get image from tab (upload or camera) ─────────────────────────────
 def image_input(label, key_prefix, required=True):
-    """Shows Upload / Take Photo tabs and returns the selected image source or None."""
     heading = f"### {label}" + ("" if required else " *(optional)*")
     st.markdown(heading)
     tab_upload, tab_camera = st.tabs(["Upload file", "Take photo"])
@@ -314,17 +330,6 @@ if front_source:
 
         st.success("Scan complete!")
         display_results(result)
-
-        sheet_url = save_to_sheet(result)
-        if sheet_url:
-            st.success(f"Saved to Google Sheet. [Open Sheet]({sheet_url})")
-        else:
-            sheet_id = get_sheet_id()
-            if not sheet_id or sheet_id == "your_sheet_id_here":
-                st.warning("Google Sheet ID not found in secrets.")
-            elif get_gsheet_creds() is None:
-                st.warning("Google credentials not found. Check that [gcp_service_account] is set in Streamlit secrets.")
-            else:
-                st.warning("Sheet save failed — check the warnings above for details.")
+        save_to_sheet(result)
 else:
     st.info("Upload or photograph the front of a card above to get started.")
