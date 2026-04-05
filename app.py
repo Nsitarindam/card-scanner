@@ -146,11 +146,15 @@ Return ONLY valid JSON with no markdown or extra text:
 
     content.append({"type": "text", "text": prompt})
 
-    response = client.messages.create(
-        model="claude-3-haiku-20240307",
-        max_tokens=2048,
-        messages=[{"role": "user", "content": content}],
-    )
+    try:
+        response = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception as e:
+        st.error(f"Anthropic API error: {e}")
+        st.stop()
 
     raw = response.content[0].text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
