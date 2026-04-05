@@ -49,21 +49,8 @@ def get_gsheet_creds():
     ]
     # Try Streamlit Cloud secrets first
     try:
-        if "gcp_service_account" in st.secrets:
-            raw = st.secrets["gcp_service_account"]
-            # Force convert to plain dict with plain string values
-            info = {
-                "type": str(raw["type"]),
-                "project_id": str(raw["project_id"]),
-                "private_key_id": str(raw["private_key_id"]),
-                "private_key": str(raw["private_key"]).replace("\\n", "\n"),
-                "client_email": str(raw["client_email"]),
-                "client_id": str(raw["client_id"]),
-                "auth_uri": str(raw["auth_uri"]),
-                "token_uri": str(raw["token_uri"]),
-                "auth_provider_x509_cert_url": str(raw["auth_provider_x509_cert_url"]),
-                "client_x509_cert_url": str(raw["client_x509_cert_url"]),
-            }
+        if "GCP_CREDENTIALS_JSON" in st.secrets:
+            info = json.loads(str(st.secrets["GCP_CREDENTIALS_JSON"]))
             return Credentials.from_service_account_info(info, scopes=scopes)
     except Exception as e:
         st.warning(f"Cloud credentials error: {e}")
@@ -191,7 +178,7 @@ def save_to_sheet(data):
 
     creds = get_gsheet_creds()
     if creds is None:
-        st.warning("Could not load Google credentials. Check [gcp_service_account] in Streamlit secrets.")
+        st.warning("Could not load Google credentials. Check that GCP_CREDENTIALS_JSON is set in Streamlit secrets.")
         return None
 
     try:
