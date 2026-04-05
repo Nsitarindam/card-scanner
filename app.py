@@ -321,6 +321,10 @@ if front_source:
         else:
             sheet_id = get_sheet_id()
             if not sheet_id or sheet_id == "your_sheet_id_here":
-                st.info("Google Sheet not configured — results above only.")
+                st.warning("Google Sheet ID not found in secrets.")
+            elif get_gsheet_creds() is None:
+                st.warning("Google credentials not found. Check that [gcp_service_account] is set in Streamlit secrets.")
+            else:
+                st.warning("Sheet save failed — check the warnings above for details.")
 else:
     st.info("Upload or photograph the front of a card above to get started.")
